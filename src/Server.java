@@ -100,6 +100,13 @@ public class Server {
                 String command;
                 while ((command = in.readLine()) != null) {
                     String[] parts = command.split(":", 3);
+
+                    // 校验命令格式
+                    if (parts.length < 2) {
+                        out.println("ERROR:命令格式错误");
+                        continue;
+                    }
+
                     String action = parts[0];
                     String username = parts[1];
                     String data = parts.length > 2 ? parts[2] : "";
@@ -117,13 +124,16 @@ public class Server {
                         case "FIND_PASSWORD":
                             handleFindPassword(username, out);
                             break;
+                        case "CHAT":
+                            handleChatMessage(username, data);
+                            break;
                         default:
                             out.println("ERROR:未知命令");
                     }
                 }
 
             } catch (IOException e) {
-                System.out.println(username + " 的连接异常断开");
+                System.out.println((username != null ? username : "未知用户") + " 的连接异常断开");
             } finally {
                 try {
                     socket.close();
@@ -131,7 +141,10 @@ public class Server {
                     // Ignore
                 }
                 clients.remove(this);
-                System.out.println(username + " 已断开连接");
+                if (username != null) {
+                    broadcast(username + " 离开了聊天", null);
+                    System.out.println(username + " 已断开连接");
+                }
             }
         }
 
@@ -151,6 +164,7 @@ public class Server {
             if (userDatabase.containsKey(username) && userDatabase.get(username).equals(inputHash)) {
                 this.username = username;
                 out.println("SUCCESS:登录成功");
+                broadcast(username + " 加入了聊天", this);
                 System.out.println(username + " 登录成功");
             } else {
                 out.println("ERROR:用户名或密码错误");
@@ -176,6 +190,15 @@ public class Server {
             } else {
                 out.println("ERROR:未设置安全邮箱");
             }
+        }
+
+        // 处理聊天消息
+        private void handleChatMessage(String username, String message) {
+            if (this.username == null || !this.username.equals(username)) {
+                out.println("ERROR:未登录或用户名不匹配");
+                return;
+            }
+            broadcast("[" + username + "]: " + message, this);
         }
 
         public void sendMessage(String message) {
