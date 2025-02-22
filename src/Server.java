@@ -102,7 +102,7 @@ public class Server {
                     String[] parts = command.split(":", 3);
 
                     // 校验命令格式
-                    if (parts.length < 2) {
+                    if (parts.length < 3) {
                         out.println("ERROR:命令格式错误");
                         continue;
                     }
@@ -141,10 +141,13 @@ public class Server {
                     // Ignore
                 }
                 clients.remove(this);
+
                 if (username != null) {
                     broadcast(username + " 离开了聊天", null);
                     System.out.println(username + " 已断开连接");
+
                 }
+
             }
         }
 
@@ -162,7 +165,7 @@ public class Server {
         // 处理登录
         private void handleLogin(String username, String inputHash, PrintWriter out) {
             if (userDatabase.containsKey(username) && userDatabase.get(username).equals(inputHash)) {
-                this.username = username;
+                this.username = username; // 确保此处正确绑定用户名
                 out.println("SUCCESS:登录成功");
                 broadcast(username + " 加入了聊天", this);
                 System.out.println(username + " 登录成功");
@@ -195,6 +198,7 @@ public class Server {
         // 处理聊天消息
         private void handleChatMessage(String username, String message) {
             if (this.username == null || !this.username.equals(username)) {
+                //System.out.println(username);
                 out.println("ERROR:未登录或用户名不匹配");
                 return;
             }
