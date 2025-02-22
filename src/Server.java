@@ -29,7 +29,7 @@ public class Server {
         synchronized (clients) {
             for (ClientHandler client : clients) {
                 if (client != excludeClient) {
-                    client.sendMessage(message); // 必须调用此方法
+                    client.sendMessage(message);
                 }
             }
         }
@@ -65,6 +65,7 @@ public class Server {
                     if (inputLine.startsWith("/quit")) {
                         break;
                     }
+                    System.out.println("[SERVER] 收到消息: " + inputLine); // 调试日志
                     broadcast("[" + username + "]: " + inputLine, this);
                 }
 
