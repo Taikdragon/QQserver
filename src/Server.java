@@ -18,13 +18,11 @@ public class Server {
 
     static {
         try {
-            // 显式加载SQLite驱动
             Class.forName("org.sqlite.JDBC");
         } catch (ClassNotFoundException e) {
             e.printStackTrace();
         }
 
-        // 初始化数据库表
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:chat.db");
              Statement stmt = conn.createStatement()) {
             stmt.execute("CREATE TABLE IF NOT EXISTS messages (" +
@@ -70,22 +68,19 @@ public class Server {
     }
 
     public static void main(String[] args) {
-        // 设置SSL配置
         System.setProperty("jdk.tls.server.protocols", "TLSv1.3");
         System.setProperty("javax.net.ssl.keyStore", "keystore.jks");
-        System.setProperty("javax.net.ssl.keyStorePassword", "nn0426"); // 你的密码
+        System.setProperty("javax.net.ssl.keyStorePassword", "nn0426"); // 修改后的密码
 
         loadUserData();
         Runtime.getRuntime().addShutdownHook(new Thread(() -> saveUserData()));
 
         System.out.println("QQ聊天服务器已启动...");
         try {
-            // 初始化SSL上下文
             SSLContext sslContext = SSLContext.getInstance("TLSv1.3");
             KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
             KeyStore ks = KeyStore.getInstance("JKS");
 
-            // 加载密钥库
             try (FileInputStream fis = new FileInputStream("keystore.jks")) {
                 ks.load(fis, "nn0426".toCharArray());
             }
@@ -95,7 +90,6 @@ public class Server {
             SSLServerSocketFactory sslServerSocketFactory = sslContext.getServerSocketFactory();
             SSLServerSocket serverSocket = (SSLServerSocket) sslServerSocketFactory.createServerSocket(PORT);
 
-            // 心跳检测线程
             new Thread(() -> {
                 while (true) {
                     try {
@@ -116,7 +110,6 @@ public class Server {
                 }
             }).start();
 
-            // 接受客户端连接
             while (true) {
                 SSLSocket clientSocket = (SSLSocket) serverSocket.accept();
                 System.out.println("新客户端连接: " + clientSocket);
@@ -237,6 +230,9 @@ public class Server {
         }
 
         private void handleLogin(String username, String inputHash, PrintWriter out) {
+            System.out.println("[调试] 登录请求 - 用户名: " + username + ", 输入哈希: " + inputHash);
+            System.out.println("[调试] 数据库中的哈希: " + userDatabase.get(username));
+
             if (userDatabase.containsKey(username) && userDatabase.get(username).equals(inputHash)) {
                 this.username = username;
                 out.println("SUCCESS:登录成功");
@@ -245,6 +241,7 @@ public class Server {
                 System.out.println(username + " 登录成功");
             } else {
                 out.println("ERROR:用户名或密码错误");
+                System.out.println("[调试] 登录失败: 用户名或密码错误");
             }
         }
 
