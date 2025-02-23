@@ -2,40 +2,42 @@ package src;
 
 import java.io.*;
 import java.net.*;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import java.security.*;
+import java.security.cert.CertificateException;
+import java.sql.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import javax.net.ssl.*;
 
 public class Server {
     private static final int PORT = 12345;
     private static final String USER_DB_FILE = "users.db";
     private static Set<ClientHandler> clients = Collections.synchronizedSet(new HashSet<>());
-
-    // 用户数据库：用户名 -> 密码哈希
     private static Map<String, String> userDatabase = new ConcurrentHashMap<>();
-    // 用户安全信息：用户名 -> 安全邮箱（示例）
     private static Map<String, String> userSecurity = new ConcurrentHashMap<>();
 
-    public static void main(String[] args) {
-        loadUserData();  // 启动时加载用户数据
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> saveUserData()));  // 关闭时保存数据
+    static {
+        try {
+            // 显式加载SQLite驱动
+            Class.forName("org.sqlite.JDBC");
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
 
-        System.out.println("QQ聊天服务器已启动...");
-        try (ServerSocket serverSocket = new ServerSocket(PORT)) {
-            while (true) {
-                Socket clientSocket = serverSocket.accept();
-                System.out.println("新客户端连接: " + clientSocket);
-                ClientHandler clientHandler = new ClientHandler(clientSocket);
-                clients.add(clientHandler);
-                new Thread(clientHandler).start();
-            }
-        } catch (IOException e) {
-            System.err.println("服务器异常: " + e.getMessage());
+        // 初始化数据库表
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:chat.db");
+             Statement stmt = conn.createStatement()) {
+            stmt.execute("CREATE TABLE IF NOT EXISTS messages (" +
+                    "id INTEGER PRIMARY KEY," +
+                    "sender TEXT," +
+                    "receiver TEXT," +
+                    "content TEXT," +
+                    "timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)");
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
     }
 
-    // 加载用户数据
     private static void loadUserData() {
         try (BufferedReader reader = new BufferedReader(new FileReader(USER_DB_FILE))) {
             String line;
@@ -54,7 +56,6 @@ public class Server {
         }
     }
 
-    // 保存用户数据
     private static void saveUserData() {
         try (PrintWriter writer = new PrintWriter(new FileWriter(USER_DB_FILE))) {
             for (String username : userDatabase.keySet()) {
@@ -68,7 +69,68 @@ public class Server {
         }
     }
 
-    // 广播消息给所有客户端
+    public static void main(String[] args) {
+        // 设置SSL配置
+        System.setProperty("jdk.tls.server.protocols", "TLSv1.3");
+        System.setProperty("javax.net.ssl.keyStore", "keystore.jks");
+        System.setProperty("javax.net.ssl.keyStorePassword", "nn0426"); // 你的密码
+
+        loadUserData();
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> saveUserData()));
+
+        System.out.println("QQ聊天服务器已启动...");
+        try {
+            // 初始化SSL上下文
+            SSLContext sslContext = SSLContext.getInstance("TLSv1.3");
+            KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+            KeyStore ks = KeyStore.getInstance("JKS");
+
+            // 加载密钥库
+            try (FileInputStream fis = new FileInputStream("keystore.jks")) {
+                ks.load(fis, "nn0426".toCharArray());
+            }
+            kmf.init(ks, "nn0426".toCharArray());
+            sslContext.init(kmf.getKeyManagers(), null, null);
+
+            SSLServerSocketFactory sslServerSocketFactory = sslContext.getServerSocketFactory();
+            SSLServerSocket serverSocket = (SSLServerSocket) sslServerSocketFactory.createServerSocket(PORT);
+
+            // 心跳检测线程
+            new Thread(() -> {
+                while (true) {
+                    try {
+                        Thread.sleep(30000);
+                        synchronized (clients) {
+                            Iterator<ClientHandler> it = clients.iterator();
+                            while (it.hasNext()) {
+                                ClientHandler client = it.next();
+                                if (System.currentTimeMillis() - client.lastActiveTime > 60000) {
+                                    client.socket.close();
+                                    it.remove();
+                                }
+                            }
+                        }
+                    } catch (InterruptedException | IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }).start();
+
+            // 接受客户端连接
+            while (true) {
+                SSLSocket clientSocket = (SSLSocket) serverSocket.accept();
+                System.out.println("新客户端连接: " + clientSocket);
+                ClientHandler clientHandler = new ClientHandler(clientSocket);
+                clients.add(clientHandler);
+                new Thread(clientHandler).start();
+            }
+        } catch (IOException | NoSuchAlgorithmException | KeyManagementException | KeyStoreException |
+                 UnrecoverableKeyException | CertificateException e) {
+            System.err.println("服务器异常: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
     public static void broadcast(String message, ClientHandler excludeClient) {
         synchronized (clients) {
             for (ClientHandler client : clients) {
@@ -79,14 +141,27 @@ public class Server {
         }
     }
 
-    // 客户端处理线程
+    public static void broadcastUserList() {
+        List<String> usernames = new ArrayList<>();
+        synchronized (clients) {
+            for (ClientHandler client : clients) {
+                if (client.username != null) {
+                    usernames.add(client.username);
+                }
+            }
+        }
+        String userListMsg = "USERS:" + String.join(",", usernames);
+        broadcast(userListMsg, null);
+    }
+
     private static class ClientHandler implements Runnable {
-        private Socket socket;
+        private final SSLSocket socket;
         private PrintWriter out;
         private String username;
+        private volatile long lastActiveTime = System.currentTimeMillis();
 
         public ClientHandler(Socket socket) {
-            this.socket = socket;
+            this.socket = (SSLSocket) socket;
         }
 
         @Override
@@ -95,13 +170,11 @@ public class Server {
                  PrintWriter out = new PrintWriter(socket.getOutputStream(), true)) {
 
                 this.out = out;
-
-                // 处理客户端命令
                 String command;
                 while ((command = in.readLine()) != null) {
-                    String[] parts = command.split(":", 3);
+                    lastActiveTime = System.currentTimeMillis();
+                    String[] parts = command.split(":", 4);
 
-                    // 校验命令格式
                     if (parts.length < 3) {
                         out.println("ERROR:命令格式错误");
                         continue;
@@ -127,11 +200,15 @@ public class Server {
                         case "CHAT":
                             handleChatMessage(username, data);
                             break;
+                        case "FILE":
+                            handleFileTransfer(username, data);
+                            break;
+                        case "HEARTBEAT":
+                            break;
                         default:
                             out.println("ERROR:未知命令");
                     }
                 }
-
             } catch (IOException e) {
                 System.out.println((username != null ? username : "未知用户") + " 的连接异常断开");
             } finally {
@@ -141,51 +218,47 @@ public class Server {
                     // Ignore
                 }
                 clients.remove(this);
-
                 if (username != null) {
                     broadcast(username + " 离开了聊天", null);
-                    System.out.println(username + " 已断开连接");
-
+                    broadcastUserList();
                 }
-
             }
         }
 
-        // 处理注册
         private void handleRegister(String username, String passwordHash, PrintWriter out) {
             if (!userDatabase.containsKey(username)) {
                 userDatabase.put(username, passwordHash);
                 out.println("SUCCESS:注册成功");
+                saveUserData();
                 System.out.println(username + " 注册成功");
             } else {
                 out.println("ERROR:用户名已存在");
             }
         }
 
-        // 处理登录
         private void handleLogin(String username, String inputHash, PrintWriter out) {
             if (userDatabase.containsKey(username) && userDatabase.get(username).equals(inputHash)) {
-                this.username = username; // 确保此处正确绑定用户名
+                this.username = username;
                 out.println("SUCCESS:登录成功");
                 broadcast(username + " 加入了聊天", this);
+                broadcastUserList();
                 System.out.println(username + " 登录成功");
             } else {
                 out.println("ERROR:用户名或密码错误");
             }
         }
 
-        // 处理密码重置
         private void handleResetPassword(String username, String newHash, PrintWriter out) {
             if (userDatabase.containsKey(username)) {
                 userDatabase.put(username, newHash);
                 out.println("SUCCESS:密码重置成功");
+                saveUserData();
                 System.out.println(username + " 重置密码");
             } else {
                 out.println("ERROR:用户不存在");
             }
         }
 
-        // 处理找回密码（示例：返回安全邮箱）
         private void handleFindPassword(String username, PrintWriter out) {
             String email = userSecurity.get(username);
             if (email != null) {
@@ -195,14 +268,72 @@ public class Server {
             }
         }
 
-        // 处理聊天消息
         private void handleChatMessage(String username, String message) {
             if (this.username == null || !this.username.equals(username)) {
-                //System.out.println(username);
                 out.println("ERROR:未登录或用户名不匹配");
                 return;
             }
-            broadcast("[" + username + "]: " + message, this);
+
+            if (message.startsWith("@")) {
+                int spaceIndex = message.indexOf(" ");
+                if (spaceIndex != -1) {
+                    String targetUser = message.substring(1, spaceIndex);
+                    String privateMsg = message.substring(spaceIndex + 1);
+                    sendPrivateMessage(username, targetUser, privateMsg);
+                    try (Connection conn = DriverManager.getConnection("jdbc:sqlite:chat.db");
+                         PreparedStatement pstmt = conn.prepareStatement(
+                                 "INSERT INTO messages(sender, receiver, content) VALUES(?,?,?)")) {
+                        pstmt.setString(1, username);
+                        pstmt.setString(2, targetUser);
+                        pstmt.setString(3, privateMsg);
+                        pstmt.executeUpdate();
+                    } catch (SQLException e) {
+                        e.printStackTrace();
+                    }
+                }
+            } else {
+                broadcast("[" + username + "]: " + message, this);
+                try (Connection conn = DriverManager.getConnection("jdbc:sqlite:chat.db");
+                     PreparedStatement pstmt = conn.prepareStatement(
+                             "INSERT INTO messages(sender, receiver, content) VALUES(?,?,?)")) {
+                    pstmt.setString(1, username);
+                    pstmt.setString(2, null);
+                    pstmt.setString(3, message);
+                    pstmt.executeUpdate();
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        private void sendPrivateMessage(String sender, String targetUser, String message) {
+            synchronized (clients) {
+                for (ClientHandler client : clients) {
+                    if (client.username != null && client.username.equals(targetUser)) {
+                        client.sendMessage("[私聊来自 " + sender + "]: " + message);
+                        this.sendMessage("[私聊发给 " + targetUser + "]: " + message);
+                        return;
+                    }
+                }
+            }
+            this.sendMessage("ERROR:用户 " + targetUser + " 不在线");
+        }
+
+        private void handleFileTransfer(String sender, String data) {
+            String[] parts = data.split(":", 3);
+            String targetUser = parts[0];
+            String fileName = parts[1];
+            String fileContent = parts[2];
+
+            synchronized (clients) {
+                for (ClientHandler client : clients) {
+                    if (client.username != null && client.username.equals(targetUser)) {
+                        client.sendMessage("FILE:" + sender + ":" + fileName + ":" + fileContent);
+                        return;
+                    }
+                }
+            }
+            this.sendMessage("ERROR:文件接收用户不在线");
         }
 
         public void sendMessage(String message) {
@@ -210,7 +341,6 @@ public class Server {
         }
     }
 
-    // 密码哈希工具方法（供客户端调用）
     public static String hashPassword(String password) throws NoSuchAlgorithmException {
         MessageDigest md = MessageDigest.getInstance("SHA-256");
         byte[] hashedBytes = md.digest(password.getBytes());
