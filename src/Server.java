@@ -70,7 +70,7 @@ public class Server {
     public static void main(String[] args) {
         System.setProperty("jdk.tls.server.protocols", "TLSv1.3");
         System.setProperty("javax.net.ssl.keyStore", "keystore.jks");
-        System.setProperty("javax.net.ssl.keyStorePassword", "nn0426"); // 修改后的密码
+        System.setProperty("javax.net.ssl.keyStorePassword", "nn0426");
 
         loadUserData();
         Runtime.getRuntime().addShutdownHook(new Thread(() -> saveUserData()));
@@ -90,6 +90,7 @@ public class Server {
             SSLServerSocketFactory sslServerSocketFactory = sslContext.getServerSocketFactory();
             SSLServerSocket serverSocket = (SSLServerSocket) sslServerSocketFactory.createServerSocket(PORT);
 
+            // 心跳检测线程（超时时间调整为5分钟）
             new Thread(() -> {
                 while (true) {
                     try {
@@ -98,9 +99,10 @@ public class Server {
                             Iterator<ClientHandler> it = clients.iterator();
                             while (it.hasNext()) {
                                 ClientHandler client = it.next();
-                                if (System.currentTimeMillis() - client.lastActiveTime > 60000) {
+                                if (System.currentTimeMillis() - client.lastActiveTime > 300000) {
                                     client.socket.close();
                                     it.remove();
+                                    System.out.println("心跳检测断开: " + client.username);
                                 }
                             }
                         }
@@ -127,7 +129,7 @@ public class Server {
     public static void broadcast(String message, ClientHandler excludeClient) {
         synchronized (clients) {
             for (ClientHandler client : clients) {
-                if (client != excludeClient) {
+                if (client != excludeClient && client.username != null) {
                     client.sendMessage(message);
                 }
             }
