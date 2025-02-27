@@ -2,6 +2,7 @@ package src;
 
 import java.io.*;
 import java.net.*;
+import java.nio.charset.StandardCharsets;
 import java.security.*;
 import java.security.cert.CertificateException;
 import java.sql.*;
@@ -320,19 +321,27 @@ public class Server {
 
         private void handleFileTransfer(String sender, String data) {
             String[] parts = data.split(":", 3);
-            String targetUser = parts[0];
-            String fileName = parts[1];
-            String fileContent = parts[2];
+            if (parts.length < 3) {
+                sendMessage("ERROR:文件参数格式错误");
+                return;
+            }
+            try {
+                String targetUser = parts[0];
+                String fileName = new String(Base64.getDecoder().decode(parts[1]), StandardCharsets.UTF_8);
+                String fileContent = parts[2];
 
-            synchronized (clients) {
-                for (ClientHandler client : clients) {
-                    if (client.username != null && client.username.equals(targetUser)) {
-                        client.sendMessage("FILE:" + sender + ":" + fileName + ":" + fileContent);
-                        return;
+                synchronized (clients) {
+                    for (ClientHandler client : clients) {
+                        if (client.username != null && client.username.equals(targetUser)) {
+                            client.sendMessage("FILE:" + sender + ":" + fileName + ":" + fileContent);
+                            return;
+                        }
                     }
                 }
+                this.sendMessage("ERROR:用户 " + targetUser + " 不在线");
+            } catch (IllegalArgumentException e) {
+                sendMessage("ERROR:文件名解码失败");
             }
-            this.sendMessage("ERROR:文件接收用户不在线");
         }
 
         public void sendMessage(String message) {
