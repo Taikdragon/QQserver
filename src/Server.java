@@ -113,6 +113,17 @@ public class Server {
                 }
             }).start();
 
+            new Thread(() -> {
+                Scanner scanner = new Scanner(System.in);
+                while (true) {
+                    String command = scanner.nextLine();
+                    if (command.startsWith("out ")) {
+                        String targetUser = command.substring(4).trim();
+                        kickUser(targetUser);
+                    }
+                }
+            }).start();
+
             while (true) {
                 SSLSocket clientSocket = (SSLSocket) serverSocket.accept();
                 System.out.println("新客户端连接: " + clientSocket);
@@ -124,6 +135,29 @@ public class Server {
                  UnrecoverableKeyException | CertificateException e) {
             System.err.println("服务器异常: " + e.getMessage());
             e.printStackTrace();
+        }
+    }
+
+    private static void kickUser(String username) {
+        synchronized (clients) {
+            Iterator<ClientHandler> iterator = clients.iterator();
+            while (iterator.hasNext()) {
+                ClientHandler client = iterator.next();
+                if (client.username != null && client.username.equals(username)) {
+                    try {
+                        // 发送踢出消息并关闭连接
+                        client.sendMessage("SYSTEM:你已被管理员踢出");
+                        client.socket.close();
+                        iterator.remove();
+                        System.out.println("[管理员] 用户 " + username + " 已被踢出");
+                        broadcastUserList(); // 更新所有用户的在线列表
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                    return;
+                }
+            }
+            System.out.println("[错误] 用户 " + username + " 不存在或未在线");
         }
     }
 
@@ -197,7 +231,11 @@ public class Server {
                             handleChatMessage(username, data);
                             break;
                         case "FILE":
-                            handleFileTransfer(username, data);
+                            //handleFileTransfer(username, parts);
+                            //handleFileTransfer(username, data);
+                            // 提取完整的FILE数据部分（格式：目标用户:编码文件名:内容）
+                            String fileData = command.substring(5); // 移除"FILE:"前缀
+                            handleFileTransfer(this.username, fileData);
                             break;
                         case "HEARTBEAT":
                             break;
@@ -319,6 +357,7 @@ public class Server {
             this.sendMessage("ERROR:用户 " + targetUser + " 不在线");
         }
 
+        /*
         private void handleFileTransfer(String sender, String data) {
             String[] parts = data.split(":", 3);
             if (parts.length < 3) {
@@ -341,6 +380,50 @@ public class Server {
                 this.sendMessage("ERROR:用户 " + targetUser + " 不在线");
             } catch (IllegalArgumentException e) {
                 sendMessage("ERROR:文件名解码失败");
+            }
+        }
+
+         */
+
+        private void handleFileTransfer(String sender, String data) {
+            try {
+                System.out.println("[DEBUG] 收到原始数据: " + data);
+                String[] parts = data.split(":", 3); // 分割为 [目标用户, 文件名, 内容]
+                String targetUser = parts[0];
+                String encodedFileName = parts[1];
+                String fileContent = parts[2];
+                // 转发消息给目标用户（格式: FILE:发送者:文件名:内容）
+                String forwardMsg = "FILE:" + sender + ":" + targetUser + ":" + encodedFileName + ":" +fileContent;
+                if (parts.length < 3) {
+                    System.out.println("[ERROR] 文件参数不足，实际字段数: " + parts.length);
+                    sendMessage("ERROR:文件参数格式错误");
+                    return;
+                }
+
+                //String targetUser = parts[0];
+                String fileName = new String(
+                        Base64.getDecoder().decode(parts[1]), StandardCharsets.UTF_8
+                );
+                //String fileContent = parts[2];
+
+                synchronized (clients) {
+                    for (ClientHandler client : clients) {
+                        if (client.username != null && client.username.equals(targetUser)) {
+                            client.sendMessage(forwardMsg);
+                            sendMessage("发送成功");
+                            System.out.println("[DEBUG] 已转发文件：" + fileName + " -> " + targetUser);
+                            return;
+                        }
+                    }
+                }
+                sendMessage("ERROR:用户 " + targetUser + " 不在线");
+            } catch (IllegalArgumentException e) {
+                System.out.println("[ERROR] 文件名解码失败: " + e.getMessage());
+                sendMessage("ERROR:文件格式非法");
+            } catch (Exception e) {
+                System.out.println("[ERROR] 文件处理异常: " + e.getMessage());
+                sendMessage("ERROR:文件处理失败");
+                e.printStackTrace();
             }
         }
 
