@@ -172,10 +172,29 @@ public class Server {
                             continue;
                         }
                         muteUser(targetUser, minutes);
-                    }
-                    else {
-                        broadcast("\u001B[31m[管理员] " + command + "\u001B[0m", null);
-                        //broadcast("[管理员]  " + command , null);
+                    } else if (command.startsWith("list")) {
+                        System.out.println("=== 在线用户列表 ===");
+                        synchronized (clients) {
+                            clients.stream()
+                                    .filter(client -> client.username != null)
+                                    .forEach(client -> System.out.println("- " + client.username));
+                        }
+                        System.out.println("===================");
+                    } else if(command.startsWith("unmute ")) {
+                        String targerUser = command.substring(7).trim();
+                        unmuteUser(targerUser);
+                    } else if (command.equals("status")) {
+                        System.out.println("=== 服务端状态 ===");
+                        System.out.println("在线用户数: " + clients.size());
+                        System.out.println("禁言用户列表: " + mutedUsers.keySet());
+                        System.out.println("用户数据库文件: " + USER_DB_FILE);
+                        System.out.println("=================");
+                    } else if (command.startsWith("announce ")) {
+                        String message = command.substring(9);
+                        broadcast("[系统公告]  " + message , null);
+                    } else {
+                        //broadcast("\u001B[31m[管理员] " + command + "\u001B[0m", null);
+                        broadcast("[管理员]  " + command , null);
                     }
                 }
             }).start();
@@ -249,6 +268,17 @@ public class Server {
             clients.stream()
                     .filter(client -> client.username != null && client.username.equals(username))
                     .forEach(client -> client.sendMessage("SYSTEM:你已被禁言，剩余时间：" + minutes + "分钟"));
+        }
+    }
+
+    private static void unmuteUser(String username) {
+        if (mutedUsers.containsKey(username)) {
+            mutedUsers.remove(username);
+            System.out.println("[管理员] 用户 " + username + " 的禁言已解除");
+            broadcast("SYSTEM:用户 " + username + "的禁言已解除", null);
+            //broadcast("[系统] 用户 " + username + " 的禁言已被管理员解除", null);
+        } else {
+            System.out.println("[错误] 用户 " + username + "未被禁言");
         }
     }
 
@@ -356,6 +386,12 @@ public class Server {
                             break;
                         case "HEARTBEAT":
                             break;
+                        case "LIST_USERS":
+                            handleListUsers(out);
+                            break;
+                        case "HISTORY":
+                            handleHistoryRequest(username, data, out);
+                            break;
                         default:
                             out.println("ERROR:未知命令");
                     }
@@ -373,6 +409,39 @@ public class Server {
                     broadcast(username + " 离开了聊天", null);
                     broadcastUserList();
                 }
+            }
+        }
+
+        // 新增处理方法
+        private void handleListUsers(PrintWriter out) {
+            List<String> users = new ArrayList<>();
+            synchronized (clients) {
+                for (ClientHandler client : clients) {
+                    if (client.username != null) {
+                        users.add(client.username);
+                    }
+                }
+            }
+            out.println("USERS:" + String.join(",", users));
+        }
+
+        private void handleHistoryRequest(String username, String countStr, PrintWriter out) {
+            try (Connection conn = DriverManager.getConnection("jdbc:sqlite:chat.db");
+                 PreparedStatement pstmt = conn.prepareStatement(
+                         "SELECT sender, content FROM messages WHERE receiver IS NULL ORDER BY timestamp DESC LIMIT ?")) {
+                int count = Integer.parseInt(countStr);
+                pstmt.setInt(1, count);
+                ResultSet rs = pstmt.executeQuery();
+                StringBuilder history = new StringBuilder();
+                while (rs.next()) {
+                    history.append(rs.getString("sender"))
+                            .append(": ")
+                            .append(rs.getString("content"))
+                            .append("\n");
+                }
+                out.println("HISTORY:" + history.toString());
+            } catch (SQLException | NumberFormatException e) {
+                out.println("ERROR:获取历史失败");
             }
         }
 
