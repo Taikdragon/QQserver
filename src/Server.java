@@ -40,19 +40,6 @@ public class Server {
         }, 0, 60 * 1000);
     }
 
-    /*
-    static {
-        new Timer().schedule(new TimerTask() {
-            @Override
-            public void run() {
-                long now = System.currentTimeMillis();
-                mutedUsers.entrySet().removeIf(entry -> entry.getValue() <= now);
-            }
-        }, 0, 60 * 1000); // 每分钟执行一次
-    }
-
-     */
-
     static {
         try {
             Class.forName("org.sqlite.JDBC");
@@ -198,34 +185,6 @@ public class Server {
                     }
                 }
             }).start();
-
-            // Server.java 的 main 方法中
-            /*
-
-            new Thread(() -> {
-                Scanner scanner = new Scanner(System.in);
-                while (true) {
-                    String command = scanner.nextLine().trim();
-                    if (command.startsWith("mute ")) {
-                        String[] parts = command.split("\\s+", 3); // 格式: mute 用户名 分钟
-                        if (parts.length < 3) {
-                            System.out.println("[错误] 命令格式应为: mute 用户名 分钟");
-                            continue;
-                        }
-                        String targetUser = parts[1];
-                        int minutes;
-                        try {
-                            minutes = Integer.parseInt(parts[2]);
-                        } catch (NumberFormatException e) {
-                            System.out.println("[错误] 分钟数必须为整数");
-                            continue;
-                        }
-                        muteUser(targetUser, minutes);
-                    }
-                }
-            }).start();
-
-             */
 
             while (true) {
                 SSLSocket clientSocket = (SSLSocket) serverSocket.accept();
@@ -557,34 +516,6 @@ public class Server {
             }
             this.sendMessage("ERROR:用户 " + targetUser + " 不在线");
         }
-
-        /*
-        private void handleFileTransfer(String sender, String data) {
-            String[] parts = data.split(":", 3);
-            if (parts.length < 3) {
-                sendMessage("ERROR:文件参数格式错误");
-                return;
-            }
-            try {
-                String targetUser = parts[0];
-                String fileName = new String(Base64.getDecoder().decode(parts[1]), StandardCharsets.UTF_8);
-                String fileContent = parts[2];
-
-                synchronized (clients) {
-                    for (ClientHandler client : clients) {
-                        if (client.username != null && client.username.equals(targetUser)) {
-                            client.sendMessage("FILE:" + sender + ":" + fileName + ":" + fileContent);
-                            return;
-                        }
-                    }
-                }
-                this.sendMessage("ERROR:用户 " + targetUser + " 不在线");
-            } catch (IllegalArgumentException e) {
-                sendMessage("ERROR:文件名解码失败");
-            }
-        }
-
-         */
 
         private void handleFileTransfer(String sender, String data) {
             try {
