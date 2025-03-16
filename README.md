@@ -1,20 +1,17 @@
-Hello friends, I'm attempting to develop a web chat room.  It might not be perfect, so please bear with me. Both my server-side and client-side code are open-sourced here.  Thank you for your support!
-朋友们你们好，我尝试模仿去开发一款网络聊天室。可能做的不好，多多谅解。我的服务端代码和客户端代码都在这里开源。谢谢你们的支持！
+Hello friends, I'm attempting to develop a web chat room.  It might not be perfect, so please bear with me. Both my server-side and client-side code are open-sourced here.
+朋友们你们好，我尝试模仿去开发一款网络聊天室。可能做的不好，多多谅解。我的服务端代码和客户端代码都在这里开源。
 
 Below are the instructions for use:
-  Password recovery is temporarily unavailable, and resetting your password is quite simple without verification.  
-  If you need to use it, please modify the code yourself.  
-  The chat room supports simple file sending (no larger than 10MB). 
-  You can add and send emojis, but once someone sends a message after sending an emoji, it will be immediately overwritten.  
-  @someone to send a private message.  
-  /help to view help
+  /Out of someone, can kick out someone.
+  /Mute someone time, you can ban someone.
+  /Unmute someone can lift the ban on someone.
+  Sending messages directly is done as an administrator in the chat hall
 
 下面是使用说明：
-  找回密码暂时不可用，重置密码十分简单无需验证。
-  如果需要使用请自行修改代码。聊天室支持简单的文件发送（不能大于10MB） 。
-  可以添加发送表情包，但是发送表情包后，一旦有人发送消息会被立刻覆盖。
-  @某人，可以私聊。
-  /help可以查看帮助
+  /out 某人，可以踢出某人。
+  /mute 某人 时间，可以禁言某人。
+  /unmute 某人，可以解除禁言某人。
+  直接发送消息，是以管理员身份发送到聊天大厅
 
 
                                                       Thanks you for your support!
