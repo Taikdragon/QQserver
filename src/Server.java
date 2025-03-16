@@ -345,6 +345,18 @@ public class Server {
                             break;
                         case "HEARTBEAT":
                             break;
+                        case "EMOJI":
+                            // 格式验证：EMOJI:发送者:文件名
+                            if (parts.length < 3) {
+                                out.println("ERROR:无效的表情消息格式");
+                                break;
+                            }
+                            System.out.println(username + "：发送表情成功");
+                            String emojiSender = parts[1];
+                            String emojiFile = parts[2];
+                            // 广播标准化消息：EMOJI:发送者:文件名
+                            broadcast("EMOJI:" + emojiSender + ":" + emojiFile, this);
+                            break;
                         case "LIST_USERS":
                             handleListUsers(out);
                             break;
