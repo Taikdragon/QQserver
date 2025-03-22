@@ -13,11 +13,11 @@ import javax.net.ssl.*;
 public class Server {
     private static final int PORT = 12345;
     private static final String USER_DB_FILE = "users.db";
-    private static Set<ClientHandler> clients = Collections.synchronizedSet(new HashSet<>());
+    public static Set<ClientHandler> clients = Collections.synchronizedSet(new HashSet<>());
     private static Map<String, String> userDatabase = new ConcurrentHashMap<>();
     private static Map<String, String> userSecurity = new ConcurrentHashMap<>();
     // Server.java 顶部添加
-    private static Map<String, Long> mutedUsers = new ConcurrentHashMap<>(); // 用户名 -> 禁言截止时间戳
+    public static Map<String, Long> mutedUsers = new ConcurrentHashMap<>(); // 用户名 -> 禁言截止时间戳
 
     // 禁言检查线程（每分钟清理一次过期记录）
     static {
@@ -205,7 +205,7 @@ public class Server {
      * @param username 目标用户名
      * @param minutes 禁言时长（分钟）
      */
-    private static void muteUser(String username, int minutes) {
+    public static void muteUser(String username, int minutes) {
         synchronized (clients) {
             // 检查用户是否在线
             boolean isOnline = clients.stream()
@@ -230,7 +230,7 @@ public class Server {
         }
     }
 
-    private static void unmuteUser(String username) {
+    public static void unmuteUser(String username) {
         if (mutedUsers.containsKey(username)) {
             mutedUsers.remove(username);
             System.out.println("[管理员] 用户 " + username + " 的禁言已解除");
@@ -241,7 +241,7 @@ public class Server {
         }
     }
 
-    private static void kickUser(String username) {
+    public static void kickUser(String username) {
         synchronized (clients) {
             Iterator<ClientHandler> iterator = clients.iterator();
             while (iterator.hasNext()) {
@@ -290,10 +290,10 @@ public class Server {
         broadcast(userListMsg, null);
     }
 
-    private static class ClientHandler implements Runnable {
+    public static class ClientHandler implements Runnable {
         private final SSLSocket socket;
         private PrintWriter out;
-        private String username;
+        public String username;
         private volatile long lastActiveTime = System.currentTimeMillis();
 
         public ClientHandler(Socket socket) {
